@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <title>International Assignments – Gruppe</title>
+        <script src="/socket.io/socket.io.js"></script>
+        <style>
+            body {
+                font-family: system-ui, sans-serif;
+                margin: 0;
+                background: #0f172a;
+                color: #e5e7eb;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            .card {
+                background: #111827;
+                border-radius: 16px;
+                padding: 1rem 1.25rem;
+                max-width: 480px;
+                width: 100%;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            }
+            h1 {
+                margin-top: 0;
+                font-size: 1.2rem;
+                margin-bottom: 0.2rem;
+            }
+            .small {
+                font-size: 0.85rem;
+                color: #9ca3af;
+                margin-bottom: 0.75rem;
+            }
+            button {
+                padding: 0.45rem 0.9rem;
+                border-radius: 999px;
+                border: none;
+                background: #2563eb;
+                color: white;
+                font-weight: 600;
+                cursor: pointer;
+                margin-right: 0.5rem;
+                margin-top: 0.5rem;
+            }
+            button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            .group-buttons button {
+                width: 100%;
+                margin-bottom: 0.4rem;
+            }
+            .question-text {
+                font-weight: 600;
+                margin-bottom: 0.6rem;
+            }
+            .options {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 0.35rem;
+                margin-bottom: 0.6rem;
+            }
+            .option-btn {
+                width: 100%;
+                text-align: left;
+                border-radius: 999px;
+                border: 1px solid #374151;
+                background: #1f2937;
+                padding: 0.45rem 0.7rem;
+                color: #e5e7eb;
+                cursor: pointer;
+                font-size: 0.95rem;
+            }
+            .option-btn.selected {
+                border-color: #e5e7eb;
+                background: #1d4ed8;
+            }
+            .status {
+                font-size: 0.9rem;
+                color: #9ca3af;
+                min-height: 1.2em;
+            }
+            .badge {
+                display: inline-block;
+                padding: 0.05rem 0.5rem;
+                border-radius: 999px;
+                background: #1d4ed8;
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+            }
+            .score {
+                font-size: 0.9rem;
+                margin-bottom: 0.4rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>International Assignments – Gruppenansicht</h1>
+            <div class="small">Wähle zuerst, zu welcher Gruppe du gehörst.</div>
+
+            <div id="group-select" class="group-buttons">
+                <button data-group="g1">Ich bin Gruppe 1</button>
+                <button data-group="g2">Ich bin Gruppe 2</button>
+                <button data-group="g3">Ich bin Gruppe 3</button>
+            </div>
+
+            <div id="game-area" style="display: none">
+                <div class="score">
+                    <span class="badge" id="group-name-badge">Gruppe</span>
+                    <span id="score-info"></span>
+                </div>
+                <div class="question-text" id="question-text">
+                    Warte auf die nächste Frage …
+                </div>
+                <div class="options" id="options"></div>
+                <div class="status" id="status"></div>
+            </div>
+        </div>
+
+        <script>
+            const socket = io();
+
+            let myGroupId = null;
+            let groups = {
+                g1: { name: "Gruppe 1", correct: 0 },
+                g2: { name: "Gruppe 2", correct: 0 },
+                g3: { name: "Gruppe 3", correct: 0 },
+            };
+            let gameOver = false;
+            let currentQuestion = null;
+            let alreadyAnsweredThisQuestion = false;
+
+            const groupSelectDiv = document.getElementById("group-select");
+            const gameArea = document.getElementById("game-area");
+            const groupNameBadge = document.getElementById("group-name-badge");
+            const scoreInfoEl = document.getElementById("score-info");
+            const questionTextEl = document.getElementById("question-text");
+            const optionsEl = document.getElementById("options");
+            const statusEl = document.getElementById("status");
+
+            groupSelectDiv.addEventListener("click", (e) => {
+                if (e.target.tagName !== "BUTTON") return;
+                myGroupId = e.target.getAttribute("data-group");
+                groupSelectDiv.style.display = "none";
+                gameArea.style.display = "block";
+                statusEl.textContent =
+                    "Verbunden. Warte auf die nächste Frage …";
+
+                socket.emit("register", { role: "group", groupId: myGroupId });
+
+                if (groups[myGroupId]) {
+                    groupNameBadge.textContent = groups[myGroupId].name;
+                    updateScoreInfo();
+                }
+            });
+
+            socket.on("stateUpdate", (payload) => {
+                groups = payload.groups;
+                gameOver = payload.gameOver;
+                if (myGroupId && groups[myGroupId]) {
+                    groupNameBadge.textContent = groups[myGroupId].name;
+                    updateScoreInfo();
+                }
+                if (gameOver) {
+                    statusEl.textContent = "Spiel beendet.";
+                }
+            });
+
+            socket.on("newQuestion", (q) => {
+                currentQuestion = q;
+                alreadyAnsweredThisQuestion = false;
+                questionTextEl.textContent = q.text;
+                statusEl.textContent =
+                    "Wähle deine Antwort – du kannst pro Frage nur einmal tippen.";
+                renderOptions(q.options);
+            });
+
+            socket.on("answerResult", (result) => {
+                if (result.correct) {
+                    statusEl.textContent = "Richtige Antwort! 👏";
+                } else {
+                    statusEl.textContent =
+                        "Leider falsch. Die Frage ist für euch vorbei.";
+                }
+            });
+
+            socket.on("gameOver", (payload) => {
+                gameOver = true;
+                const winners = payload.winners.map((w) => w.name).join(", ");
+                if (
+                    myGroupId &&
+                    payload.winners.some((w) => w.id === myGroupId)
+                ) {
+                    statusEl.textContent = `🎉 Ihr habt gewonnen! (${winners})`;
+                } else {
+                    statusEl.textContent = `Spiel beendet. Gewinner: ${winners}`;
+                }
+            });
+
+            function updateScoreInfo() {
+                const g = groups[myGroupId];
+                scoreInfoEl.textContent = ` | Richtige Antworten: ${g.correct} / 10`;
+            }
+
+            function renderOptions(options) {
+                optionsEl.innerHTML = "";
+                const keys = ["A", "B", "C", "D"];
+
+                options.forEach((opt, idx) => {
+                    const btn = document.createElement("button");
+                    btn.className = "option-btn";
+                    btn.innerHTML = `<strong>${keys[idx]}.</strong> ${opt}`;
+                    btn.addEventListener("click", () => {
+                        if (
+                            gameOver ||
+                            alreadyAnsweredThisQuestion ||
+                            !currentQuestion
+                        )
+                            return;
+                        alreadyAnsweredThisQuestion = true;
+                        socket.emit("answer", { optionIndex: idx });
+                        clearSelection();
+                        btn.classList.add("selected");
+                    });
+                    optionsEl.appendChild(btn);
+                });
+            }
+
+            function clearSelection() {
+                optionsEl.querySelectorAll(".option-btn").forEach((b) => {
+                    b.classList.remove("selected");
+                });
+            }
+        </script>
+    </body>
+</html>

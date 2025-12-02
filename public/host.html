@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <title>International Assignments – Host</title>
+        <script src="/socket.io/socket.io.js"></script>
+        <style>
+            body {
+                font-family: system-ui, sans-serif;
+                margin: 0;
+                background: #f4f4f8;
+                color: #111827;
+            }
+            header {
+                background: #1e3a8a;
+                color: white;
+                padding: 0.75rem 1rem;
+            }
+            main {
+                max-width: 1000px;
+                margin: 1rem auto;
+                padding: 0 1rem;
+            }
+            .card {
+                background: white;
+                border-radius: 12px;
+                padding: 1rem 1.25rem;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+                margin-bottom: 1rem;
+            }
+            input[type="text"] {
+                width: 100%;
+                padding: 0.3rem 0.5rem;
+                border-radius: 6px;
+                border: 1px solid #d1d5db;
+            }
+            button {
+                padding: 0.45rem 0.9rem;
+                border-radius: 999px;
+                border: none;
+                background: #2563eb;
+                color: white;
+                font-weight: 600;
+                cursor: pointer;
+                margin-right: 0.5rem;
+                margin-top: 0.5rem;
+            }
+            button.secondary {
+                background: #e5e7eb;
+                color: #111827;
+            }
+            button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            .group-setup {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 0.75rem;
+            }
+            .group-box {
+                border-radius: 10px;
+                border: 1px solid #e5e7eb;
+                padding: 0.5rem;
+                background: #f9fafb;
+            }
+            .track {
+                border-radius: 12px;
+                border: 1px solid #e5e7eb;
+                padding: 0.75rem;
+                background: #f9fafb;
+            }
+            .track-row {
+                display: flex;
+                align-items: center;
+                margin-bottom: 0.35rem;
+                gap: 0.5rem;
+            }
+            .track-name {
+                width: 180px;
+                font-weight: 600;
+            }
+            .track-bar {
+                flex: 1;
+                display: grid;
+                grid-template-columns: repeat(10, 1fr);
+                gap: 4px;
+            }
+            .track-cell {
+                border-radius: 6px;
+                border: 1px dashed #d1d5db;
+                min-height: 26px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.1rem;
+            }
+            .question-text {
+                font-weight: 600;
+                margin-bottom: 0.5rem;
+            }
+            .options {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 0.35rem;
+            }
+            .option {
+                border-radius: 10px;
+                border: 1px solid #e5e7eb;
+                padding: 0.4rem 0.5rem;
+                font-size: 0.95rem;
+            }
+            .status {
+                font-size: 0.9rem;
+                margin-top: 0.4rem;
+            }
+            .badge {
+                display: inline-block;
+                padding: 0.05rem 0.5rem;
+                border-radius: 999px;
+                background: #dbeafe;
+                color: #1d4ed8;
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>International Assignments – Host-Ansicht</h1>
+        </header>
+        <main>
+            <section class="card">
+                <h2>Gruppen einstellen</h2>
+                <p>Namen anpassen und dann „Spiel starten“ klicken.</p>
+                <div class="group-setup">
+                    <div class="group-box">
+                        <strong>Gruppe 1</strong>
+                        <input id="g1-name" type="text" value="Gruppe 1" />
+                    </div>
+                    <div class="group-box">
+                        <strong>Gruppe 2</strong>
+                        <input id="g2-name" type="text" value="Gruppe 2" />
+                    </div>
+                    <div class="group-box">
+                        <strong>Gruppe 3</strong>
+                        <input id="g3-name" type="text" value="Gruppe 3" />
+                    </div>
+                </div>
+                <button id="start-btn">Spiel starten / zurücksetzen</button>
+            </section>
+
+            <section class="card">
+                <div
+                    style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 0.5rem;
+                    "
+                >
+                    <div>
+                        <span class="badge">Frage</span>
+                        <span id="question-info">–</span>
+                    </div>
+                    <div id="game-status"></div>
+                </div>
+                <div class="track" id="track"></div>
+                <div style="margin-top: 0.75rem">
+                    <div class="question-text" id="question-text">
+                        Noch keine Frage gestartet.
+                    </div>
+                    <div class="options" id="options"></div>
+                    <div class="status" id="status-line"></div>
+                    <button id="next-question-btn">
+                        Nächste Frage starten
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <script>
+            const socket = io();
+
+            const g1NameInput = document.getElementById("g1-name");
+            const g2NameInput = document.getElementById("g2-name");
+            const g3NameInput = document.getElementById("g3-name");
+            const startBtn = document.getElementById("start-btn");
+            const nextBtn = document.getElementById("next-question-btn");
+
+            const trackEl = document.getElementById("track");
+            const questionTextEl = document.getElementById("question-text");
+            const optionsEl = document.getElementById("options");
+            const questionInfoEl = document.getElementById("question-info");
+            const gameStatusEl = document.getElementById("game-status");
+            const statusLineEl = document.getElementById("status-line");
+
+            let groups = {
+                g1: { name: "Gruppe 1", correct: 0 },
+                g2: { name: "Gruppe 2", correct: 0 },
+                g3: { name: "Gruppe 3", correct: 0 },
+            };
+            let gameOver = false;
+            let currentQuestion = null;
+
+            socket.emit("register", { role: "host" });
+
+            startBtn.addEventListener("click", () => {
+                socket.emit("setGroups", {
+                    groups: {
+                        g1: { name: g1NameInput.value || "Gruppe 1" },
+                        g2: { name: g2NameInput.value || "Gruppe 2" },
+                        g3: { name: g3NameInput.value || "Gruppe 3" },
+                    },
+                });
+                gameOver = false;
+                currentQuestion = null;
+                questionTextEl.textContent = "Noch keine Frage gestartet.";
+                optionsEl.innerHTML = "";
+                questionInfoEl.textContent = "–";
+                statusLineEl.textContent = "";
+            });
+
+            nextBtn.addEventListener("click", () => {
+                if (gameOver) return;
+                socket.emit("nextQuestion");
+            });
+
+            socket.on("stateUpdate", (payload) => {
+                groups = payload.groups;
+                gameOver = payload.gameOver;
+                renderTrack();
+
+                if (!gameOver) {
+                    const maxCorrect = Math.max(
+                        groups.g1.correct,
+                        groups.g2.correct,
+                        groups.g3.correct,
+                    );
+                    if (maxCorrect === 0) {
+                        gameStatusEl.textContent =
+                            "Alle starten bei 0 – los geht's!";
+                    } else {
+                        const leaders = Object.values(groups)
+                            .filter((g) => g.correct === maxCorrect)
+                            .map((g) => g.name)
+                            .join(", ");
+                        gameStatusEl.textContent = `Vorne: ${leaders} (${maxCorrect} / 10 richtige Antworten)`;
+                    }
+                }
+            });
+
+            socket.on("newQuestion", (q) => {
+                currentQuestion = q;
+                questionInfoEl.textContent = `${q.index + 1} von 20 (es zählen 10 richtige)`;
+                questionTextEl.textContent = q.text;
+                optionsEl.innerHTML = "";
+                const keys = ["A", "B", "C", "D"];
+                q.options.forEach((opt, idx) => {
+                    const div = document.createElement("div");
+                    div.className = "option";
+                    div.innerHTML = `<strong>${keys[idx]}.</strong> ${opt}`;
+                    optionsEl.appendChild(div);
+                });
+                statusLineEl.textContent =
+                    "Frage läuft – Gruppen antworten auf ihren eigenen Geräten.";
+            });
+
+            socket.on("noMoreQuestions", () => {
+                statusLineEl.textContent = "Keine Fragen mehr verfügbar.";
+            });
+
+            socket.on("gameOver", (payload) => {
+                gameOver = true;
+                const winnerNames = payload.winners
+                    .map((w) => w.name)
+                    .join(", ");
+                statusLineEl.textContent = `Spiel beendet. Gewinner: ${winnerNames}`;
+            });
+
+            function renderTrack() {
+                trackEl.innerHTML = "";
+                ["g1", "g2", "g3"].forEach((id) => {
+                    const row = document.createElement("div");
+                    row.className = "track-row";
+
+                    const name = document.createElement("div");
+                    name.className = "track-name";
+                    name.textContent = `${groups[id].name} (${groups[id].correct}/10)`;
+                    row.appendChild(name);
+
+                    const bar = document.createElement("div");
+                    bar.className = "track-bar";
+
+                    for (let i = 1; i <= 10; i++) {
+                        const cell = document.createElement("div");
+                        cell.className = "track-cell";
+                        if (i === groups[id].correct) {
+                            cell.textContent = "🏃";
+                        }
+                        bar.appendChild(cell);
+                    }
+                    row.appendChild(bar);
+                    trackEl.appendChild(row);
+                });
+            }
+        </script>
+    </body>
+</html>
